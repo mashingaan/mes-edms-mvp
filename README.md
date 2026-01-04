@@ -62,8 +62,6 @@ docker-compose exec backend python scripts/seed_demo_data.py
 | Frontend shows 404 | Ensure backend is running: `curl http://localhost:8000/health` |
 | Login fails | Verify admin was created: check migration logs or run seed script |
 
-For detailed demo walkthrough, see [DEMO_SCRIPT.md](./DEMO_SCRIPT.md)
-
 ---
 
 ## Структура проекта
