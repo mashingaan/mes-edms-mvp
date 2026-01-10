@@ -2,6 +2,9 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Build argument for API URL
+ARG VITE_API_BASE_URL=https://inspro-mes.ru
+
 # Copy package files
 COPY package*.json ./
 
@@ -10,6 +13,9 @@ RUN npm install
 
 # Copy source code
 COPY . .
+
+# Set environment variable for build
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 # Build production bundle
 RUN npm run build
