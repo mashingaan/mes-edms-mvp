@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 @router.get("/my", response_model=List[NotificationResponse])
-async def get_my_notifications(
+def get_my_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -27,7 +27,7 @@ async def get_my_notifications(
 
 
 @router.patch("/{notification_id}/read", response_model=NotificationResponse)
-async def mark_as_read(
+def mark_as_read(
     notification_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -39,7 +39,7 @@ async def mark_as_read(
 
 
 @router.patch("/read-all")
-async def mark_all_as_read(
+def mark_all_as_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):

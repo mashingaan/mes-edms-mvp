@@ -26,7 +26,7 @@ router = APIRouter()
 
 
 @router.get("", response_model=List[DocumentResponse])
-async def get_documents(
+def get_documents(
     item_id: Optional[UUID] = Query(None),
     show_deleted: Optional[bool] = Query(False),
     db: Session = Depends(get_db),
@@ -77,7 +77,7 @@ async def create_new_document(
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
-async def get_document_by_id(
+def get_document_by_id(
     document_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -131,7 +131,7 @@ async def upload_new_revision(
 
 
 @router.get("/{document_id}/revisions/{revision_id}/download")
-async def download_revision(
+def download_revision(
     document_id: UUID,
     revision_id: UUID,
     db: Session = Depends(get_db),
@@ -150,7 +150,7 @@ async def download_revision(
 
 
 @router.get("/{document_id}/revisions/{revision_id}/preview")
-async def preview_revision(
+def preview_revision(
     document_id: UUID,
     revision_id: UUID,
     db: Session = Depends(get_db),
@@ -174,7 +174,7 @@ async def preview_revision(
 
 
 @router.delete("/{document_id}")
-async def delete_document_by_id(
+def delete_document_by_id(
     request: Request,
     document_id: UUID,
     hard: bool = Query(False),

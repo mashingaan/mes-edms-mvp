@@ -9,6 +9,7 @@ from alembic import context
 from app.database import Base
 from app.models import (
     User, Project, Item, Document, DocumentRevision,
+    TechDocument, TechDocumentVersion,
     AuditLog, Notification, ProgressHistory
 )
 from app.config import settings

@@ -10,6 +10,9 @@ import { ItemDetailPage } from './pages/ItemDetailPage'
 import { UsersPage } from './pages/UsersPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { TechPage } from './pages/TechPage'
+import { TechProjectSectionsPage } from './pages/TechProjectSectionsPage'
+import { TechSectionDocumentsPage } from './pages/TechSectionDocumentsPage'
 
 function App() {
   return (
@@ -26,7 +29,9 @@ function App() {
               <Route path="/items/:id" element={<ItemDetailPage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/audit" element={<AuditLogPage />} />
-              <Route path="/tech" element={<PlaceholderPage title="Технологический" />} />
+              <Route path="/tech" element={<TechPage />} />
+              <Route path="/tech/projects/:projectId/sections" element={<TechProjectSectionsPage />} />
+              <Route path="/tech/sections/:sectionId/documents" element={<TechSectionDocumentsPage />} />
               <Route path="/procurement" element={<PlaceholderPage title="Закупка" />} />
               <Route path="/production" element={<PlaceholderPage title="Производство" />} />
               <Route path="/qc" element={<PlaceholderPage title="ОТК" />} />

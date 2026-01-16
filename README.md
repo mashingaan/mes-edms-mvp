@@ -140,6 +140,7 @@ docker-compose down
 | SECRET_KEY | JWT secret key (256-bit) | - |
 | ACCESS_TOKEN_EXPIRE_MINUTES | JWT token TTL | 480 (8 часов) |
 | FILE_STORAGE_PATH | Путь для хранения файлов | /var/app/storage/documents |
+| TECH_FILE_STORAGE_PATH | Путь для хранения технологических Excel-документов (fallback: FILE_STORAGE_PATH) | /var/app/storage/tech_documents |
 | MAX_FILE_SIZE_MB | Максимальный размер файла | 100 |
 | CORS_ORIGINS | Разрешенные origins | ["http://localhost:3000"] |
 | ADMIN_EMAIL | Email администратора | admin@example.com |
@@ -202,4 +203,30 @@ pytest tests/integration/
 ## Лицензия
 
 Proprietary
+
+
+
+## Технологический модуль
+
+Функции:
+- Просмотр Excel-документов для разделов проекта (ProjectSection)
+- Загрузка/обновление/удаление документов с версиями
+- Логи в audit log и notifications
+
+API endpoints:
+- GET /api/tech/sections/{section_id}/documents
+- POST /api/tech/sections/{section_id}/documents
+- GET /api/tech/documents/{document_id}
+- GET /api/tech/documents/{document_id}/download
+- GET /api/tech/documents/{document_id}/preview
+- PUT /api/tech/documents/{document_id}
+- DELETE /api/tech/documents/{document_id}?mode=soft|hard
+- GET /api/tech/documents/{document_id}/versions
+
+UI навигация:
+- Технологический > проект > раздел > документы
+
+RBAC:
+- admin: полный доступ (upload/update/delete)
+- non-admin: просмотр и скачивание
 

@@ -9,6 +9,9 @@ from app.models.user import User, UserRole
 from app.models.document import Document
 from app.models.document_revision import DocumentRevision
 from app.models.item import Item
+from app.models.tech_document import TechDocument
+from app.models.project_section import ProjectSection
+from app.models.project import Project
 
 
 def create_notification(
@@ -186,5 +189,126 @@ def notify_item_updated(
         if admin.id == updated_by_user_id:
             continue
         if item.responsible_id and admin.id == item.responsible_id:
+            continue
+        create_notification(db, admin.id, message, payload)
+
+
+def notify_tech_document_uploaded(
+    db: Session,
+    document: TechDocument,
+    section: ProjectSection
+) -> None:
+    """Notify admins and responsible users about tech document upload."""
+    message = f"Технологический документ {document.filename} загружен для раздела {section.code}"
+    payload = {
+        "document_id": str(document.id),
+        "section_id": str(section.id),
+        "version": document.version,
+    }
+
+    responsible_id = getattr(section, "responsible_id", None)
+    if responsible_id:
+        create_notification(db, responsible_id, message, payload)
+
+    admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+    for admin in admins:
+        if responsible_id and admin.id == responsible_id:
+            continue
+        create_notification(db, admin.id, message, payload)
+
+
+def notify_tech_document_updated(
+    db: Session,
+    document: TechDocument,
+    section: ProjectSection,
+    old_version: int,
+    new_version: int
+) -> None:
+    """Notify admins and responsible users about tech document update."""
+    message = f"Технологический документ {document.filename} обновлен: {old_version} → {new_version}"
+    payload = {
+        "document_id": str(document.id),
+        "section_id": str(section.id),
+        "version": new_version,
+    }
+
+    responsible_id = getattr(section, "responsible_id", None)
+    if responsible_id:
+        create_notification(db, responsible_id, message, payload)
+
+    admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+    for admin in admins:
+        if responsible_id and admin.id == responsible_id:
+            continue
+        create_notification(db, admin.id, message, payload)
+
+
+def notify_tech_document_deleted(
+    db: Session,
+    document: TechDocument,
+    section: ProjectSection
+) -> None:
+    """Notify admins and responsible users about tech document deletion."""
+    message = 	f"Технологический документ {document.filename} удален из раздела {section.code}"
+    payload = {
+        "document_id": str(document.id),
+        "section_id": str(section.id),
+        "version": document.version,
+    }
+
+    responsible_id = getattr(section, "responsible_id", None)
+    if responsible_id:
+        create_notification(db, responsible_id, message, payload)
+
+    admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+    for admin in admins:
+        if responsible_id and admin.id == responsible_id:
+            continue
+        create_notification(db, admin.id, message, payload)
+
+
+def notify_tech_section_created(
+    db: Session,
+    section: ProjectSection,
+    project: Project
+) -> None:
+    """Notify admins and responsible users about tech section creation."""
+    message = f"Создан раздел {section.code} в проекте {project.name}"
+    payload = {
+        "section_id": str(section.id),
+        "project_id": str(project.id),
+    }
+
+    responsible_id = getattr(project, "responsible_id", None)
+    if responsible_id:
+        create_notification(db, responsible_id, message, payload)
+
+    admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+    for admin in admins:
+        if responsible_id and admin.id == responsible_id:
+            continue
+        create_notification(db, admin.id, message, payload)
+
+
+def notify_tech_section_deleted(
+    db: Session,
+    section_id: UUID,
+    section_code: str,
+    project: Project
+) -> None:
+    """Notify admins and responsible users about tech section deletion."""
+    message = f"Удален раздел {section_code} в проекте {project.name}"
+    payload = {
+        "section_id": str(section_id),
+        "project_id": str(project.id),
+    }
+
+    responsible_id = getattr(project, "responsible_id", None)
+    if responsible_id:
+        create_notification(db, responsible_id, message, payload)
+
+    admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+    for admin in admins:
+        if responsible_id and admin.id == responsible_id:
             continue
         create_notification(db, admin.id, message, payload)

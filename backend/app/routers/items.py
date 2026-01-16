@@ -58,7 +58,7 @@ def item_to_response(item: Item) -> ItemResponse:
 
 
 @router.get("", response_model=List[ItemResponse])
-async def get_items(
+def get_items(
     project_id: Optional[UUID] = Query(None),
     section_id: Optional[UUID] = Query(None),
     db: Session = Depends(get_db),
@@ -69,7 +69,7 @@ async def get_items(
 
 
 @router.post("", response_model=ItemResponse)
-async def create_new_item(
+def create_new_item(
     request: Request,
     item_data: ItemCreate,
     db: Session = Depends(get_db),
@@ -90,7 +90,7 @@ async def create_new_item(
 
 
 @router.get("/{item_id}", response_model=ItemResponse)
-async def get_item_by_id(
+def get_item_by_id(
     item_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -102,7 +102,7 @@ async def get_item_by_id(
 
 
 @router.patch("/{item_id}", response_model=ItemResponse)
-async def update_item_by_id(
+def update_item_by_id(
     request: Request,
     item_id: UUID,
     item_data: ItemUpdate,
@@ -168,7 +168,7 @@ async def update_item_by_id(
 
 
 @router.patch("/{item_id}/progress", response_model=ItemResponse)
-async def update_item_progress(
+def update_item_progress(
     request: Request,
     item_id: UUID,
     progress_data: ProgressUpdate,
@@ -204,7 +204,7 @@ async def update_item_progress(
 
 
 @router.delete("/{item_id}")
-async def delete_item_by_id(
+def delete_item_by_id(
     request: Request,
     item_id: UUID,
     db: Session = Depends(get_db),
@@ -227,7 +227,7 @@ async def delete_item_by_id(
 
 
 @router.get("/{item_id}/progress-history", response_model=List[ProgressHistoryResponse])
-async def get_item_progress_history(
+def get_item_progress_history(
     item_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic_settings import BaseSettings
 
 
@@ -12,6 +14,7 @@ class Settings(BaseSettings):
     
     # File Storage
     FILE_STORAGE_PATH: str = "/var/app/storage/documents"
+    TECH_FILE_STORAGE_PATH: Optional[str] = None
     MAX_FILE_SIZE_MB: int = 100
     
     # CORS
@@ -20,6 +23,7 @@ class Settings(BaseSettings):
     # Admin seed
     ADMIN_EMAIL: str = "admin@example.com"
     ADMIN_PASSWORD: str = "adminpassword"
+    ADMIN_NAME: str = "Administrator"
     
     class Config:
         env_file = ".env"

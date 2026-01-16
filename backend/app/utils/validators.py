@@ -5,6 +5,8 @@ from fastapi import UploadFile, HTTPException, status
 
 ALLOWED_EXTENSIONS = {".pdf"}
 PDF_MAGIC_BYTES = b"%PDF-"
+ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm"}
+EXCEL_MAGIC_BYTES = b"PK\x03\x04"
 
 
 async def validate_pdf_header(file: UploadFile) -> None:
@@ -26,6 +28,28 @@ async def validate_pdf_header(file: UploadFile) -> None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid PDF file (magic bytes check failed)"
+        )
+
+
+async def validate_excel_file(file: UploadFile) -> None:
+    """Validate Excel file without loading entire file into RAM."""
+    # 1. Extension check
+    if file.filename:
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ALLOWED_EXCEL_EXTENSIONS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only Excel files allowed"
+            )
+
+    # 2. Read magic bytes check
+    chunk = await file.read(len(EXCEL_MAGIC_BYTES))
+    await file.seek(0)  # Reset for later streaming
+
+    if not chunk.startswith(EXCEL_MAGIC_BYTES):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Excel file (magic bytes check failed)"
         )
 
 

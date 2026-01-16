@@ -21,13 +21,13 @@ router = APIRouter()
 
 
 @router.get("", response_model=List[UserResponse], dependencies=[Depends(require_role(["admin"]))])
-async def get_users(db: Session = Depends(get_db)):
+def get_users(db: Session = Depends(get_db)):
     users = list_users(db)
     return [UserResponse.model_validate(u) for u in users]
 
 
 @router.post("", response_model=UserResponse)
-async def create_new_user(
+def create_new_user(
     request: Request,
     user_data: UserCreate,
     db: Session = Depends(get_db),
@@ -48,7 +48,7 @@ async def create_new_user(
 
 
 @router.get("/{user_id}", response_model=UserResponse, dependencies=[Depends(require_role(["admin"]))])
-async def get_user_by_id(user_id: UUID, db: Session = Depends(get_db)):
+def get_user_by_id(user_id: UUID, db: Session = Depends(get_db)):
     user = get_user(db, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -56,7 +56,7 @@ async def get_user_by_id(user_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.patch("/{user_id}", response_model=UserResponse)
-async def update_user_by_id(
+def update_user_by_id(
     request: Request,
     user_id: UUID,
     user_data: UserUpdate,
@@ -80,7 +80,7 @@ async def update_user_by_id(
 
 
 @router.delete("/{user_id}", response_model=UserResponse)
-async def delete_user_by_id(
+def delete_user_by_id(
     request: Request,
     user_id: UUID,
     db: Session = Depends(get_db),

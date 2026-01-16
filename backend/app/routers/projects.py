@@ -16,10 +16,13 @@ from app.services.project_service import (
     delete_project,
     create_section,
     list_sections,
+    delete_section,
 )
+from app.services.notification_service import notify_tech_section_created, notify_tech_section_deleted
 from app.services.audit_service import log_action
 from app.dependencies import get_current_user, require_role
 from app.models.user import User
+from app.models.project_section import ProjectSection
 
 router = APIRouter()
 
@@ -29,7 +32,7 @@ class SectionCreateRequest(BaseModel):
 
 
 @router.get("", response_model=List[ProjectResponse])
-async def get_projects(
+def get_projects(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -38,7 +41,7 @@ async def get_projects(
 
 
 @router.post("", response_model=ProjectResponse)
-async def create_new_project(
+def create_new_project(
     request: Request,
     project_data: ProjectCreate,
     db: Session = Depends(get_db),
@@ -59,7 +62,7 @@ async def create_new_project(
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
-async def get_project_by_id(
+def get_project_by_id(
     project_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -71,7 +74,7 @@ async def get_project_by_id(
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
-async def update_project_by_id(
+def update_project_by_id(
     request: Request,
     project_id: UUID,
     project_data: ProjectUpdate,
@@ -111,7 +114,7 @@ async def update_project_by_id(
 
 
 @router.delete("/{project_id}")
-async def delete_project_by_id(
+def delete_project_by_id(
     request: Request,
     project_id: UUID,
     db: Session = Depends(get_db),
@@ -134,7 +137,7 @@ async def delete_project_by_id(
 
 
 @router.post("/{project_id}/sections", response_model=ProjectSectionResponse)
-async def create_project_section(
+def create_project_section(
     request: Request,
     project_id: UUID,
     section_data: SectionCreateRequest,
@@ -147,6 +150,8 @@ async def create_project_section(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     
     section = create_section(db, project_id, section_data.code)
+
+    notify_tech_section_created(db, section, project)
     
     # Audit log
     log_action(
@@ -161,7 +166,7 @@ async def create_project_section(
 
 
 @router.get("/{project_id}/sections", response_model=List[ProjectSectionResponse])
-async def get_project_sections(
+def get_project_sections(
     project_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -173,4 +178,53 @@ async def get_project_sections(
     
     sections = list_sections(db, project_id)
     return [ProjectSectionResponse.model_validate(s) for s in sections]
+
+
+@router.get("/sections/{section_id}", response_model=ProjectSectionResponse)
+def get_section_by_id(
+    section_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    section = db.query(ProjectSection).filter(ProjectSection.id == section_id).first()
+    if not section:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Section not found")
+
+    return ProjectSectionResponse.model_validate(section)
+
+
+@router.delete("/{project_id}/sections/{section_id}")
+def delete_project_section(
+    request: Request,
+    project_id: UUID,
+    section_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin"]))
+):
+    project = get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    section = db.query(ProjectSection).filter(ProjectSection.id == section_id).first()
+    if not section or section.project_id != project_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Section not found")
+
+    section_id_value = section.id
+    section_code = section.code
+
+    success = delete_section(db, section_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Section not found")
+
+    notify_tech_section_deleted(db, section_id_value, section_code, project)
+
+    log_action(
+        db,
+        user_id=current_user.id,
+        action_type="project.section_delete",
+        payload={"project_id": str(project_id), "section_id": str(section_id_value), "code": section_code},
+        ip_address=getattr(request.state, "ip", None)
+    )
+
+    return {"message": "Section deleted"}
 

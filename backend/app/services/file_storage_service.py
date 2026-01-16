@@ -6,7 +6,7 @@ from typing import Dict
 from fastapi import UploadFile
 
 from app.config import settings
-from app.utils.validators import stream_file_to_disk
+from app.utils.validators import stream_file_to_disk, ALLOWED_EXCEL_EXTENSIONS
 
 
 async def save_file(file: UploadFile) -> Dict:
@@ -42,6 +42,49 @@ def get_file_path(storage_uuid: uuid.UUID) -> Path:
 def delete_file(storage_uuid: uuid.UUID) -> bool:
     """Delete file from storage."""
     path = get_file_path(storage_uuid)
+    if path.exists():
+        os.remove(path)
+        return True
+    return False
+
+
+async def save_excel_file(file: UploadFile) -> Dict:
+    """Save uploaded Excel file to storage and return metadata."""
+    file_uuid = uuid.uuid4()
+    
+    storage_root = settings.TECH_FILE_STORAGE_PATH or settings.FILE_STORAGE_PATH
+    storage_path = Path(storage_root)
+    storage_path.mkdir(parents=True, exist_ok=True)
+
+    extension = ""
+    if file.filename:
+        extension = os.path.splitext(file.filename)[1].lower()
+    if extension not in ALLOWED_EXCEL_EXTENSIONS:
+        extension = ".xlsx"
+
+    output_path = storage_path / f"{file_uuid}{extension}"
+
+    max_size_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    metadata = await stream_file_to_disk(file, str(output_path), max_size_bytes)
+
+    return {
+        "uuid": file_uuid,
+        "sha256": metadata["sha256"],
+        "size_bytes": metadata["size_bytes"],
+        "extension": extension,
+    }
+
+
+def get_excel_file_path(storage_uuid: uuid.UUID, extension: str) -> Path:
+    """Get Excel file path for a storage UUID and extension."""
+    normalized_extension = extension if extension.startswith(".") else f".{extension}"
+    storage_root = settings.TECH_FILE_STORAGE_PATH or settings.FILE_STORAGE_PATH
+    return Path(storage_root) / f"{storage_uuid}{normalized_extension}"
+
+
+def delete_excel_file(storage_uuid: uuid.UUID, extension: str) -> bool:
+    """Delete Excel file from storage."""
+    path = get_excel_file_path(storage_uuid, extension)
     if path.exists():
         os.remove(path)
         return True

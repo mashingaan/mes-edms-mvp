@@ -4,7 +4,7 @@ import asyncio
 from io import BytesIO
 from fastapi import UploadFile, HTTPException
 
-from app.utils.validators import validate_pdf_header, stream_file_to_disk
+from app.utils.validators import validate_pdf_header, validate_excel_file, stream_file_to_disk
 
 
 class FakeUploadFile:
@@ -95,4 +95,39 @@ async def test_stream_file_to_disk_too_large(tmp_path):
     
     assert exc_info.value.status_code == 413
     assert not os.path.exists(output_path)
+
+
+@pytest.mark.asyncio
+async def test_validate_excel_file_valid():
+    """Valid Excel passes validation."""
+    excel_content = b"PK\x03\x04 test excel content"
+    file = FakeUploadFile("test.xlsx", excel_content)
+
+    await validate_excel_file(file)
+
+
+@pytest.mark.asyncio
+async def test_validate_excel_file_invalid_extension():
+    """Invalid extension is rejected for Excel validation."""
+    excel_content = b"PK\x03\x04 test excel content"
+    file = FakeUploadFile("test.pdf", excel_content)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await validate_excel_file(file)
+
+    assert exc_info.value.status_code == 400
+    assert "excel" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_validate_excel_file_invalid_magic_bytes():
+    """Invalid magic bytes are rejected for Excel validation."""
+    excel_content = b"Not an excel file"
+    file = FakeUploadFile("test.xlsx", excel_content)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await validate_excel_file(file)
+
+    assert exc_info.value.status_code == 400
+    assert "magic bytes" in exc_info.value.detail.lower()
 

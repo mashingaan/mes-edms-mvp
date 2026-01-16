@@ -4,6 +4,8 @@ from app.models.project_section import ProjectSection
 from app.models.item import Item
 from app.models.document import Document
 from app.models.document_revision import DocumentRevision
+from app.models.tech_document import TechDocument
+from app.models.tech_document_version import TechDocumentVersion
 from app.models.audit_log import AuditLog
 from app.models.notification import Notification
 from app.models.progress_history import ProgressHistory
@@ -15,6 +17,8 @@ __all__ = [
     "Item",
     "Document",
     "DocumentRevision",
+    "TechDocument",
+    "TechDocumentVersion",
     "AuditLog",
     "Notification",
     "ProgressHistory",

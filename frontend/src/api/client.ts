@@ -1,7 +1,18 @@
 import axios from 'axios'
 
+// Динамическое определение API URL по текущему хосту
+const getApiBaseUrl = (): string => {
+  // Если задан явно через env - используем его
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL
+  }
+
+  // Default: same-origin (nginx proxies /api)
+  return window.location.origin
+}
+
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
+  baseURL: getApiBaseUrl(),
   timeout: 30000,
 })
 

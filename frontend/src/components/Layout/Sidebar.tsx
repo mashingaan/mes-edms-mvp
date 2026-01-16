@@ -12,7 +12,7 @@ import { clsx } from 'clsx'
 
 const navItems = [
   { to: '/', label: 'Конструкторский', icon: FileText, active: true },
-  { to: '/tech', label: 'Технологический', icon: Settings, disabled: true },
+  { to: '/tech', label: 'Технологический', icon: Settings, disabled: false },
   { to: '/procurement', label: 'Закупка', icon: ShoppingCart, disabled: true },
   { to: '/production', label: 'Производство', icon: Factory, disabled: true },
   { to: '/qc', label: 'ОТК', icon: CheckCircle, disabled: true },

@@ -35,3 +35,12 @@ export const getSections = async (projectId: string): Promise<ProjectSection[]> 
   return response.data
 }
 
+export const getSectionById = async (sectionId: string): Promise<ProjectSection> => {
+  const response = await apiClient.get<ProjectSection>(`/api/projects/sections/${sectionId}`)
+  return response.data
+}
+
+export const deleteSection = async (projectId: string, sectionId: string): Promise<void> => {
+  await apiClient.delete(`/api/projects/${projectId}/sections/${sectionId}`)
+}
+

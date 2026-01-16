@@ -116,3 +116,14 @@ def get_or_create_section(db: Session, project_id: UUID, code: str, commit: bool
     """
     return create_section(db, project_id, code, commit=commit)
 
+
+def delete_section(db: Session, section_id: UUID) -> bool:
+    """Delete section."""
+    section = db.query(ProjectSection).filter(ProjectSection.id == section_id).first()
+    if not section:
+        return False
+
+    db.delete(section)
+    db.commit()
+    return True
+
