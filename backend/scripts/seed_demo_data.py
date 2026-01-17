@@ -39,7 +39,7 @@ def seed_demo_data():
         admin = db.query(User).filter(User.role == UserRole.admin).first()
         if not admin:
             print("Error: Admin user not found. Run migrations first.")
-            return
+            raise RuntimeError("Admin user not found. Run migrations first.")
         
         # Create demo users with different roles
         demo_users = []

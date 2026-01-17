@@ -28,6 +28,8 @@ fi
 
 log "Starting deployment of MES-EDMS MVP..."
 
+DEMO_SEED_OK=0
+
 # Step 1: Update system and install dependencies
 log "Step 1: Installing system dependencies..."
 apt-get update -qq
@@ -63,8 +65,27 @@ fi
 
 # Verify docker compose plugin
 if ! docker compose version &> /dev/null; then
-    error "Docker Compose plugin not available"
-    exit 1
+    warn "Docker Compose plugin not available, attempting to install..."
+
+    install -m 0755 -d /etc/apt/keyrings
+    if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+    fi
+
+    if [ ! -f /etc/apt/sources.list.d/docker.list ]; then
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    fi
+
+    apt-get update -qq
+    apt-get install -y docker-compose-plugin
+
+    if ! docker compose version &> /dev/null; then
+        error "Docker Compose plugin not available"
+        exit 1
+    fi
+
+    log "Docker Compose plugin installed successfully"
 fi
 
 # Step 3: Configure firewall
@@ -79,6 +100,8 @@ log "Firewall configured"
 log "Step 4: Managing repository..."
 REPO_DIR="/opt/mes-edms-mvp"
 REPO_URL="${REPO_URL:-}"  # set this if /opt/mes-edms-mvp is missing and needs clone
+ALLOW_DEFAULT_REPO="${ALLOW_DEFAULT_REPO:-}"
+DEFAULT_REPO_URL="https://github.com/mashingaan/mes-edms-mvp"
 
 if [ -d "$REPO_DIR/.git" ]; then
     log "Repository exists, pulling latest changes..."
@@ -90,14 +113,16 @@ if [ -d "$REPO_DIR/.git" ]; then
 
     git pull origin "$DEFAULT_BRANCH" || git pull origin main || git pull origin master
 elif [ -d "$REPO_DIR" ]; then
-    error "Repo folder exists but is not a git repo: $REPO_DIR"
-    error "Do NOT delete it automatically. Set REPO_URL and clone to a new folder OR initialize git here. Aborting."
+    echo "repo not found, set REPO_URL"
     exit 1
 else
     if [ -z "$REPO_URL" ]; then
-        error "REPO_URL is not set and $REPO_DIR does not exist."
-        error "Set REPO_URL (env var) or edit the script header, then rerun."
-        exit 1
+        if [ "$ALLOW_DEFAULT_REPO" = "1" ]; then
+            REPO_URL="$DEFAULT_REPO_URL"
+        else
+            echo "repo not found, set REPO_URL"
+            exit 1
+        fi
     fi
     log "Cloning repository from $REPO_URL ..."
     git clone "$REPO_URL" "$REPO_DIR"
@@ -115,7 +140,7 @@ if [ ! -f .env ]; then
     sed -i "s|SECRET_KEY=.*|SECRET_KEY=${SECRET_KEY}|" .env
     # IMPORTANT: Do NOT force JSON array format for CORS unless backend explicitly expects it.
     # If you must set it automatically, prefer comma-separated (most compatible):
-    # sed -i 's|^CORS_ORIGINS=.*|CORS_ORIGINS=https://inspro-mes.ru,https://www.inspro-mes.ru,https://api.inspro-mes.ru|' .env
+    # sed -i 's|^CORS_ORIGINS=.*|CORS_ORIGINS=https://inspro-mes.ru,https://api.inspro-mes.ru|' .env
     
     log ".env created with generated secrets"
 else
@@ -159,6 +184,21 @@ fi
 
 log "Docker services started successfully"
 
+# Run Alembic migrations if present
+if [ -f "backend/alembic.ini" ] || [ -f "alembic.ini" ]; then
+    log "Running Alembic migrations..."
+    docker compose exec backend alembic upgrade head
+
+    log "Seeding demo data..."
+    if docker compose exec backend python scripts/seed_demo_data.py; then
+        DEMO_SEED_OK=1
+        log "Demo data seeded successfully"
+    else
+        DEMO_SEED_OK=0
+        warn "Demo data seeding failed (may already be seeded). Continuing."
+    fi
+fi
+
 # Step 7: Configure Nginx
 log "Step 7: Configuring Nginx..."
 
@@ -166,7 +206,7 @@ log "Step 7: Configuring Nginx..."
 cat > /etc/nginx/sites-available/inspro-mes <<'EOF'
 server {
     listen 80;
-    server_name inspro-mes.ru www.inspro-mes.ru;
+    server_name inspro-mes.ru;
     
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -223,8 +263,8 @@ if [ -z "$CERTBOT_EMAIL" ]; then
     CERTBOT_EMAIL="$(grep -E '^ADMIN_EMAIL=' .env 2>/dev/null | head -n 1 | cut -d= -f2- || true)"
 fi
 if [ -z "$CERTBOT_EMAIL" ]; then
-    error "CERTBOT_EMAIL is not set. Export CERTBOT_EMAIL or set ADMIN_EMAIL in .env, then rerun."
-    exit 1
+    CERTBOT_EMAIL="animobit12@mail.ru"
+    warn "CERTBOT_EMAIL is not set. Using fallback: $CERTBOT_EMAIL"
 fi
 
 # Check if certificates already exist
@@ -235,7 +275,6 @@ else
     log "Obtaining new SSL certificates..."
     certbot --nginx \
         -d inspro-mes.ru \
-        -d www.inspro-mes.ru \
         -d api.inspro-mes.ru \
         --non-interactive \
         --agree-tos \
@@ -298,16 +337,24 @@ echo ""
 echo "=========================================="
 if [ $HEALTH_FAILED -eq 0 ]; then
     echo -e "${GREEN}✓ DEPLOYMENT SUCCESSFUL${NC}"
-    echo ""
-    echo "Your application is now available at:"
-    echo "  - Frontend: https://inspro-mes.ru"
-    echo "  - API Docs: https://api.inspro-mes.ru/docs"
-    echo ""
-    echo "Login credentials are configured in .env (keep them private)."
-    echo ""
-    echo "To check status: bash /opt/mes-edms-mvp/status.sh"
+	echo ""
+	echo "Your application is now available at:"
+	echo "  - Frontend: https://inspro-mes.ru"
+	echo "  - API Docs: https://api.inspro-mes.ru/docs"
+	echo ""
+	echo "Login credentials are configured in .env (keep them private)."
+	if [ "$DEMO_SEED_OK" = "1" ]; then
+		echo "Demo users (seeded by seed_demo_data.py):"
+		echo "  - engineer@example.com / engineer123 (responsible)"
+		echo "  - designer@example.com / designer123 (responsible)"
+		echo "  - viewer@example.com / viewer123 (viewer)"
+	else
+		echo -e "${YELLOW}WARNING:${NC} Demo data was not seeded."
+	fi
+	echo ""
+	echo "To check status: bash /opt/mes-edms-mvp/status.sh"
 else
-    echo -e "${RED}✗ DEPLOYMENT COMPLETED WITH ERRORS${NC}"
+	echo -e "${RED}✗ DEPLOYMENT COMPLETED WITH ERRORS${NC}"
     echo ""
     echo "Some health checks failed. Run these commands to diagnose:"
     echo "  - docker compose logs backend --tail=100"
