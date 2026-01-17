@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { getProject, getSections, createSection } from '../api/projects'
 import { Modal } from '../components/Common/Modal'
+import { DeleteProjectModal } from '../components/Projects/DeleteProjectModal'
 import { usePermissions } from '../hooks/usePermissions'
 import { ProjectSection } from '../types/project'
 
@@ -13,6 +14,7 @@ export function TechProjectSectionsPage() {
   const queryClient = useQueryClient()
   const { isAdmin } = usePermissions()
   const [showModal, setShowModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [sectionCode, setSectionCode] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -73,13 +75,22 @@ export function TechProjectSectionsPage() {
           </div>
         </div>
         {isAdmin && (
-          <button
-            onClick={() => setShowModal(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Добавить раздел
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              Удалить проект
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить раздел
+            </button>
+          </div>
         )}
       </div>
 
@@ -104,6 +115,16 @@ export function TechProjectSectionsPage() {
           ))}
         </div>
       )}
+
+      <DeleteProjectModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        project={project}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['projects'] })
+          navigate('/tech')
+        }}
+      />
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Создать раздел">
         <form
