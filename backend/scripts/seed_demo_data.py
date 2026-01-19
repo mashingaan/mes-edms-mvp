@@ -322,7 +322,7 @@ def seed_demo_data():
         db.commit()
         print("\nDemo data seeding completed successfully!")
         print("\nDemo Users:")
-        print("  - admin@example.com / adminpassword (admin)")
+        print("  - animobit12@mail.ru / adminpassword (admin)")
         print("  - engineer@example.com / engineer123 (responsible)")
         print("  - designer@example.com / designer123 (responsible)")
         print("  - viewer@example.com / viewer123 (viewer)")

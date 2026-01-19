@@ -34,7 +34,7 @@ docker-compose ps
 **Step 4: Access the application**
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000/docs
-- Login: `admin@example.com` / `adminpassword`
+- Login: `animobit12@mail.ru` / `adminpassword`
 
 ### Health Check
 ```bash
@@ -143,7 +143,7 @@ docker-compose down
 | TECH_FILE_STORAGE_PATH | Путь для хранения технологических Excel-документов (fallback: FILE_STORAGE_PATH) | /var/app/storage/tech_documents |
 | MAX_FILE_SIZE_MB | Максимальный размер файла | 100 |
 | CORS_ORIGINS | Разрешенные origins | ["http://localhost:3000"] |
-| ADMIN_EMAIL | Email администратора | admin@example.com |
+| ADMIN_EMAIL | Email администратора | animobit12@mail.ru |
 | ADMIN_PASSWORD | Пароль администратора | - |
 
 ## API Документация

@@ -28,7 +28,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
       - FILE_STORAGE_PATH=/var/app/storage/documents
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-animobit12@mail.ru}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-adminpassword}
     volumes:
       - file_storage:/var/app/storage/documents

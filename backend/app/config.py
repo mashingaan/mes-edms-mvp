@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     
     # Admin seed
-    ADMIN_EMAIL: str = "admin@example.com"
+    ADMIN_EMAIL: str = "animobit12@mail.ru"
     ADMIN_PASSWORD: str = "adminpassword"
     ADMIN_NAME: str = "Administrator"
     
