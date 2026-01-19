@@ -1,9 +1,15 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.config import settings
+from app.database import engine
 from app.routers import auth, users, projects, items, documents, notifications, audit, tech_documents
 from app.middleware.audit_middleware import AuditMiddleware
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="MES-EDMS MVP",
@@ -34,7 +40,28 @@ app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 
 
+@app.on_event("startup")
+async def startup_db_healthcheck():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        logger.error("Database startup healthcheck failed", exc_info=True)
+        raise
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/healthz/db")
+async def db_health_check():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return {"status": "ok"}
+    except Exception:
+        logger.error("Database healthcheck failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Database unavailable")
 

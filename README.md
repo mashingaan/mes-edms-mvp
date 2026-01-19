@@ -137,6 +137,13 @@ docker-compose down
 | Переменная | Описание | Значение по умолчанию |
 |------------|----------|----------------------|
 | DATABASE_URL | PostgreSQL connection string | postgresql://postgres:postgres@localhost:5432/mes_edms |
+| DB_POOL_SIZE | Размер пула соединений (количество постоянных соединений) | 10 |
+| DB_MAX_OVERFLOW | Максимальное количество дополнительных соединений сверх pool_size | 20 |
+| DB_POOL_PRE_PING | Проверка соединения перед использованием (защита от stale connections) | true |
+| DB_POOL_RECYCLE | Время в секундах для автоматического переподключения | 3600 |
+| DB_POOL_TIMEOUT | Таймаут ожидания доступного соединения из пула (сек) | 30 |
+| DB_CONNECT_TIMEOUT | Таймаут установления соединения на уровне драйвера (сек) | 5 |
+| DB_ECHO_POOL | Логирование событий пула соединений (для отладки) | false |
 | SECRET_KEY | JWT secret key (256-bit) | - |
 | ACCESS_TOKEN_EXPIRE_MINUTES | JWT token TTL | 480 (8 часов) |
 | FILE_STORAGE_PATH | Путь для хранения файлов | /var/app/storage/documents |
@@ -145,6 +152,19 @@ docker-compose down
 | CORS_ORIGINS | Разрешенные origins | ["http://localhost:3000"] |
 | ADMIN_EMAIL | Email администратора | animobit12@mail.ru |
 | ADMIN_PASSWORD | Пароль администратора | - |
+
+### Рекомендуемые настройки пула соединений
+
+Примечание (production): `DB_POOL_SIZE` и `DB_MAX_OVERFLOW` задаются **на процесс/воркер**. Если у вас несколько воркеров, суммарное число соединений примерно равно `workers * (DB_POOL_SIZE + DB_MAX_OVERFLOW)` — учитывайте это при масштабировании (PostgreSQL `max_connections`, ресурсы сервера).
+
+| Параметр | Development | Production | Описание |
+|----------|-------------|------------|----------|
+| `DB_POOL_SIZE` | 5 | 10-20 | Базовый размер пула |
+| `DB_MAX_OVERFLOW` | 10 | 20-40 | Дополнительные соединения |
+| `DB_POOL_PRE_PING` | true | true | Всегда включать |
+| `DB_POOL_RECYCLE` | 3600 | 3600 | 1 час оптимально |
+| `DB_POOL_TIMEOUT` | 30 | 30 | Таймаут ожидания |
+| `DB_ECHO_POOL` | true | false | Только для отладки |
 
 ## API Документация
 
@@ -229,4 +249,3 @@ UI навигация:
 RBAC:
 - admin: полный доступ (upload/update/delete)
 - non-admin: просмотр и скачивание
-
