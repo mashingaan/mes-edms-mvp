@@ -16,9 +16,17 @@
 **Step 1: Clone and configure**
 ```bash
 cd mes-edms-mvp
+
+# Для Docker окружения (рекомендуется для быстрого старта)
+cp env.example .env.docker
+sed -i 's/@localhost:/@db:/g' .env.docker  # Linux/Mac
+# или вручную заменить localhost на db в DATABASE_URL
+
+# Для локальной разработки (опционально)
 cp env.example .env
-# Edit .env if needed (default values work for demo)
 ```
+
+> **Примечание:** `.env.docker` используется для Docker окружения (хост БД = `db`), `.env` для локальной разработки (хост БД = `localhost`). Подробнее в разделе "Конфигурация окружений".
 
 **Step 2: Start all services**
 ```bash
@@ -61,6 +69,58 @@ docker-compose exec backend python scripts/seed_demo_data.py
 | Database connection error | Wait for db container to be healthy: `docker-compose ps` |
 | Frontend shows 404 | Ensure backend is running: `curl http://localhost:8000/health` |
 | Login fails | Verify admin was created: check migration logs or run seed script |
+
+### Диагностика проблем с подключением к БД
+
+**Блок 1: Проверка переменных окружения**
+```bash
+# Проверить DATABASE_URL в backend контейнере
+docker-compose exec backend env | grep DATABASE
+
+# Ожидаемый вывод:
+# DATABASE_URL=postgresql://postgres:postgres@db:5432/mes_edms
+```
+
+**Блок 2: Проверка доступности PostgreSQL**
+```bash
+# Проверить статус контейнера БД
+docker-compose ps db
+
+# Проверить подключение к PostgreSQL из backend
+docker-compose exec backend python -c "from app.database import engine; engine.connect()"
+
+# Прямое подключение к PostgreSQL
+docker-compose exec db psql -U postgres -d mes_edms -c "SELECT 1"
+```
+
+**Блок 3: Анализ логов**
+```bash
+# Логи backend (ошибки подключения к БД)
+docker-compose logs backend | grep -i "database\\|connection\\|password"
+
+# Логи PostgreSQL
+docker-compose logs db | tail -50
+
+# Следить за логами в реальном времени
+docker-compose logs -f backend db
+```
+
+**Блок 4: Сброс и перезапуск**
+```bash
+# Полная очистка и перезапуск (ВНИМАНИЕ: удаляет данные!)
+docker-compose down -v
+docker-compose up -d --build
+
+# Проверить healthcheck
+curl http://localhost:8000/healthz/db
+```
+
+| Ошибка в логах | Причина | Решение |
+|----------------|---------|---------|
+| `could not connect to server: Connection refused` | PostgreSQL не запущен или недоступен | Проверить `docker-compose ps db`, перезапустить `docker-compose restart db` |
+| `password authentication failed for user "postgres"` | Неверный пароль в DATABASE_URL | Проверить `POSTGRES_PASSWORD` в `.env.docker` и DATABASE_URL |
+| `database "mes_edms" does not exist` | База данных не создана | Проверить `POSTGRES_DB` в docker-compose.yml, пересоздать контейнер |
+| `FATAL: remaining connection slots are reserved` | Исчерпан лимит соединений PostgreSQL | Уменьшить `DB_POOL_SIZE` или увеличить `max_connections` в PostgreSQL |
 
 ---
 
@@ -165,6 +225,119 @@ docker-compose down
 | `DB_POOL_RECYCLE` | 3600 | 3600 | 1 час оптимально |
 | `DB_POOL_TIMEOUT` | 30 | 30 | Таймаут ожидания |
 | `DB_ECHO_POOL` | true | false | Только для отладки |
+
+## Конфигурация окружений
+
+### Разделение конфигураций: .env vs .env.docker
+
+`.env` используется для локальной разработки (DATABASE_URL с `localhost`), `.env.docker` для Docker окружения (DATABASE_URL с хостом `db`)
+
+| Файл | Назначение | DATABASE_URL | Использование |
+|------|-----------|--------------|---------------|
+| `.env` | Локальная разработка | `postgresql://postgres:postgres@localhost:5432/mes_edms` | Запуск backend напрямую через `uvicorn` |
+| `.env.docker` | Docker окружение | `postgresql://postgres:postgres@db:5432/mes_edms` | Запуск через `docker-compose up` |
+
+### Создание .env.docker для Docker
+
+```bash
+# Скопировать шаблон
+cp env.example .env.docker
+
+# Отредактировать DATABASE_URL: заменить localhost на db
+# Linux/Mac:
+sed -i 's/@localhost:/@db:/g' .env.docker
+
+# Windows (PowerShell):
+(Get-Content .env.docker) -replace '@localhost:', '@db:' | Set-Content .env.docker
+```
+
+- Примечание: `docker-compose.yml` автоматически использует `.env.docker` через директиву `env_file`
+
+---
+
+## Мониторинг здоровья системы
+
+### Health Check Endpoints
+
+Описание доступных endpoints:
+
+**1. Базовый healthcheck приложения**
+```bash
+curl http://localhost:8000/health
+
+# Ответ:
+# {"status": "healthy"}
+```
+Назначение: Проверка работоспособности FastAPI приложения (не проверяет БД)
+
+**2. Healthcheck подключения к БД**
+```bash
+curl http://localhost:8000/healthz/db
+
+# Успешный ответ (HTTP 200):
+# {"status": "ok"}
+
+# Ошибка (HTTP 503):
+# {"detail": "Database unavailable"}
+```
+Назначение: Проверка доступности PostgreSQL (выполняет `SELECT 1`)
+
+### Startup Healthcheck
+
+Описание: При запуске backend автоматически проверяет подключение к БД. Если БД недоступна, приложение не запустится (fail-fast стратегия).
+
+Пример логов при успешном старте:
+```
+INFO: Database engine created with pool_size=10, max_overflow=20
+INFO: ✓ Database connection successful
+INFO: Application startup complete
+```
+
+### Интеграция с Docker Healthcheck
+
+Описание: `docker-compose.yml` настроен на автоматическую проверку здоровья контейнеров:
+
+```bash
+# Проверить статус healthcheck
+docker-compose ps
+
+# Ожидаемый вывод:
+# NAME                 STATUS
+# mes_edms_backend     Up (healthy)
+# mes_edms_db          Up (healthy)
+# mes_edms_frontend    Up
+```
+
+Параметры healthcheck для backend:
+- Интервал проверки: 10 секунд
+- Таймаут: 5 секунд
+- Количество попыток: 5
+
+---
+
+## Диаграмма: Разделение конфигураций
+
+```mermaid
+graph TD
+    A[env.example] -->|cp + edit| B[.env]
+    A -->|cp + sed| C[.env.docker]
+    
+    B -->|DATABASE_URL: localhost| D[Локальная разработка]
+    C -->|DATABASE_URL: db| E[Docker окружение]
+    
+    D -->|uvicorn app.main:app| F[Backend процесс]
+    E -->|docker-compose up| G[Backend контейнер]
+    
+    F -->|подключение| H[PostgreSQL на localhost:5432]
+    G -->|подключение| I[PostgreSQL контейнер db:5432]
+    
+    style B fill:#e1f5ff
+    style C fill:#fff4e1
+    style D fill:#e1f5ff
+    style E fill:#fff4e1
+```
+
+---
 
 ## API Документация
 

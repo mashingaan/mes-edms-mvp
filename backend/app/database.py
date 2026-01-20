@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import OperationalError, DBAPIError
 from sqlalchemy.orm import sessionmaker
@@ -30,7 +30,6 @@ Base = declarative_base()
 def get_db():
     db = SessionLocal()
     try:
-        db.execute(text("SELECT 1"))
         yield db
     except OperationalError:
         logger.error("Database connection error", exc_info=True)

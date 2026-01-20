@@ -45,6 +45,7 @@ async def startup_db_healthcheck():
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+        logger.info("✓ Database connection successful")
     except Exception:
         logger.error("Database startup healthcheck failed", exc_info=True)
         raise
@@ -63,5 +64,5 @@ async def db_health_check():
         return {"status": "ok"}
     except Exception:
         logger.error("Database healthcheck failed", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database unavailable")
+        raise HTTPException(status_code=503, detail="Database unavailable")
 
