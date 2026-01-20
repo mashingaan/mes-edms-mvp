@@ -20,6 +20,206 @@ warn() {
     echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1"
 }
 
+ssl_certs_exist() {
+    CERT_DIR_MAIN=/etc/letsencrypt/live/inspro-mes.ru
+    CERT_DIR_API=/etc/letsencrypt/live/api.inspro-mes.ru
+
+    if [ -z "${CERTBOT_CERTS_CACHE:-}" ]; then
+        CERTBOT_CERTS_CACHE="$(certbot certificates 2>/dev/null || true)"
+    fi
+
+    if [ -n "$CERTBOT_CERTS_CACHE" ]; then
+        if [ "${CERTBOT_CERTS_LOGGED:-0}" -eq 0 ]; then
+            CERTBOT_DOMAINS="$(echo "$CERTBOT_CERTS_CACHE" | awk -F: '/Domains:/ {print $2}' | xargs)"
+            if [ -n "$CERTBOT_DOMAINS" ]; then
+                log "certbot sees certificates for: $CERTBOT_DOMAINS"
+            fi
+            CERTBOT_CERTS_LOGGED=1
+        fi
+
+        cert_main=""
+        cert_api=""
+        current_cert=""
+        while IFS= read -r line; do
+            case "$line" in
+                *"Certificate Name:"*)
+                    current_cert="$(echo "$line" | awk '{print $3}')"
+                    ;;
+                *"Domains:"*)
+                    if echo "$line" | grep -qw "inspro-mes.ru"; then
+                        cert_main="$current_cert"
+                    fi
+                    if echo "$line" | grep -qw "api.inspro-mes.ru"; then
+                        cert_api="$current_cert"
+                    fi
+                    ;;
+            esac
+        done <<< "$CERTBOT_CERTS_CACHE"
+
+        if [ -n "$cert_main" ]; then
+            CERT_DIR_MAIN="/etc/letsencrypt/live/$cert_main"
+            CERT_DIR_API_EFFECTIVE="$CERT_DIR_MAIN"
+            if [ -n "$cert_api" ]; then
+                CERT_DIR_API_EFFECTIVE="/etc/letsencrypt/live/$cert_api"
+            fi
+
+            if [ -f "$CERT_DIR_MAIN/fullchain.pem" ] && [ -f "$CERT_DIR_MAIN/privkey.pem" ]; then
+                if [ "$CERT_DIR_API_EFFECTIVE" = "$CERT_DIR_MAIN" ]; then
+                    return 0
+                fi
+                if [ -f "$CERT_DIR_API_EFFECTIVE/fullchain.pem" ] && [ -f "$CERT_DIR_API_EFFECTIVE/privkey.pem" ]; then
+                    return 0
+                fi
+            fi
+            return 1
+        fi
+    fi
+
+    main_ok=0
+    api_ok=0
+
+    if [ -f "$CERT_DIR_MAIN/fullchain.pem" ] && [ -f "$CERT_DIR_MAIN/privkey.pem" ]; then
+        main_ok=1
+    fi
+    if [ -f "$CERT_DIR_API/fullchain.pem" ] && [ -f "$CERT_DIR_API/privkey.pem" ]; then
+        api_ok=1
+    fi
+
+    if [ "$main_ok" -ne 1 ]; then
+        return 1
+    fi
+
+    if [ -d "$CERT_DIR_API" ] && [ "$api_ok" -ne 1 ]; then
+        return 1
+    fi
+
+    CERT_DIR_API_EFFECTIVE="$CERT_DIR_MAIN"
+    if [ "$api_ok" -eq 1 ]; then
+        CERT_DIR_API_EFFECTIVE="$CERT_DIR_API"
+    fi
+
+    return 0
+}
+
+reload_nginx() {
+    if command -v systemctl &> /dev/null && systemctl is-active --quiet nginx; then
+        systemctl reload nginx
+        return $?
+    fi
+
+    if command -v nginx &> /dev/null; then
+        nginx -s reload
+        return $?
+    fi
+
+    return 1
+}
+
+generate_nginx_config() {
+    if ssl_certs_exist; then
+        log "Generating HTTPS-ready Nginx configuration..."
+
+        SSL_CERTBOT_SNIPPET=""
+        if [ -f /etc/letsencrypt/options-ssl-nginx.conf ] && [ -f /etc/letsencrypt/ssl-dhparams.pem ]; then
+            SSL_CERTBOT_SNIPPET="    include /etc/letsencrypt/options-ssl-nginx.conf;\n    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;"
+        else
+            SSL_CERTBOT_SNIPPET="    ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_ciphers HIGH:!aNULL:!MD5;"
+        fi
+
+        cat > /etc/nginx/sites-available/inspro-mes <<EOF
+server {
+    listen 80;
+    server_name inspro-mes.ru;
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name inspro-mes.ru;
+
+    ssl_certificate $CERT_DIR_MAIN/fullchain.pem;
+    ssl_certificate_key $CERT_DIR_MAIN/privkey.pem;
+$(echo -e "$SSL_CERTBOT_SNIPPET")
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+
+server {
+    listen 80;
+    server_name api.inspro-mes.ru;
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.inspro-mes.ru;
+
+    ssl_certificate $CERT_DIR_API_EFFECTIVE/fullchain.pem;
+    ssl_certificate_key $CERT_DIR_API_EFFECTIVE/privkey.pem;
+$(echo -e "$SSL_CERTBOT_SNIPPET")
+
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+    else
+        log "Generating HTTP-only Nginx configuration..."
+
+        cat > /etc/nginx/sites-available/inspro-mes <<'EOF'
+server {
+    listen 80;
+    server_name inspro-mes.ru;
+    
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+server {
+    listen 80;
+    server_name api.inspro-mes.ru;
+    
+    client_max_body_size 100M;
+    
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+    fi
+}
+
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
     error "Please run as root"
@@ -203,40 +403,7 @@ fi
 log "Step 7: Configuring Nginx..."
 
 # Create Nginx configuration
-cat > /etc/nginx/sites-available/inspro-mes <<'EOF'
-server {
-    listen 80;
-    server_name inspro-mes.ru;
-    
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-
-server {
-    listen 80;
-    server_name api.inspro-mes.ru;
-    
-    client_max_body_size 100M;
-    
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-EOF
+generate_nginx_config
 
 # Enable site
 ln -sf /etc/nginx/sites-available/inspro-mes /etc/nginx/sites-enabled/inspro-mes
@@ -252,7 +419,11 @@ fi
 
 # Reload Nginx
 systemctl enable nginx
-systemctl reload nginx
+if ! reload_nginx; then
+    error "Failed to reload Nginx"
+    nginx -t
+    exit 1
+fi
 log "Nginx configured successfully"
 
 # Step 8: Obtain SSL certificates
@@ -267,45 +438,266 @@ if [ -z "$CERTBOT_EMAIL" ]; then
     warn "CERTBOT_EMAIL is not set. Using fallback: $CERTBOT_EMAIL"
 fi
 
+CERTBOT_DEPLOY_HOOK=""
+if command -v systemctl &> /dev/null && systemctl is-active --quiet nginx; then
+    CERTBOT_DEPLOY_HOOK="systemctl reload nginx"
+elif command -v nginx &> /dev/null; then
+    CERTBOT_DEPLOY_HOOK="nginx -s reload"
+fi
+
+CERTBOT_RATE_LIMIT=0
+
 # Check if certificates already exist
-if certbot certificates 2>/dev/null | grep -q "inspro-mes.ru"; then
-    log "SSL certificates already exist, attempting renewal..."
-    certbot renew --nginx --non-interactive
+if ssl_certs_exist; then
+    log "SSL certificates already exist, checking for renewal..."
+
+    set +e
+    if [ -n "$CERTBOT_DEPLOY_HOOK" ]; then
+        flock -n /var/lock/certbot.lock certbot renew --non-interactive --deploy-hook "$CERTBOT_DEPLOY_HOOK" 2>&1 | tee /tmp/certbot-renew.log
+    else
+        flock -n /var/lock/certbot.lock certbot renew --non-interactive 2>&1 | tee /tmp/certbot-renew.log
+    fi
+    CERTBOT_EXIT_CODE=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$CERTBOT_EXIT_CODE" -eq 0 ]; then
+        if grep -q "No renewals were attempted" /tmp/certbot-renew.log; then
+            log "SSL certificates are up to date, no renewal needed"
+        elif grep -q "Successfully renewed" /tmp/certbot-renew.log; then
+            log "SSL certificates renewed successfully"
+        else
+            log "Certbot renew completed (certificates may already be fresh)"
+        fi
+    else
+        if grep -qi "too many requests" /tmp/certbot-renew.log 2>/dev/null; then
+            CERTBOT_RATE_LIMIT=1
+        else
+            error "Certbot renewal failed with exit code $CERTBOT_EXIT_CODE"
+            cat /tmp/certbot-renew.log
+            exit 1
+        fi
+    fi
 else
     log "Obtaining new SSL certificates..."
-    certbot --nginx \
+
+    set +e
+    flock -n /var/lock/certbot.lock certbot certonly --nginx \
         -d inspro-mes.ru \
         -d api.inspro-mes.ru \
         --non-interactive \
         --agree-tos \
-        --email "$CERTBOT_EMAIL" \
-        --redirect
+        --email "$CERTBOT_EMAIL" 2>&1 | tee /tmp/certbot-obtain.log
+    CERTBOT_EXIT_CODE=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$CERTBOT_EXIT_CODE" -eq 0 ]; then
+        log "SSL certificates obtained successfully"
+
+        unset CERTBOT_CERTS_CACHE
+        CERTBOT_CERTS_LOGGED=0
+        if ssl_certs_exist; then
+            log "Certificates verified, regenerating Nginx configuration with HTTPS..."
+            generate_nginx_config
+
+            if ! nginx -t; then
+                error "Nginx configuration test failed after SSL setup"
+                exit 1
+            fi
+
+            if ! reload_nginx; then
+                error "Failed to reload Nginx after certbot operation"
+                nginx -t
+                exit 1
+            fi
+
+            log "Nginx reloaded with HTTPS configuration"
+        else
+            error "Certbot reported success but certificates not found"
+            exit 1
+        fi
+    else
+        if grep -qi "too many requests" /tmp/certbot-obtain.log 2>/dev/null; then
+            CERTBOT_RATE_LIMIT=1
+        else
+            error "Certbot failed to obtain certificates (exit code: $CERTBOT_EXIT_CODE)"
+            cat /tmp/certbot-obtain.log
+            exit 1
+        fi
+    fi
 fi
 
-log "SSL certificates configured"
+if grep -qi "too many requests" /tmp/certbot-*.log 2>/dev/null; then
+    CERTBOT_RATE_LIMIT=1
+fi
+
+if [ "$CERTBOT_RATE_LIMIT" -eq 1 ]; then
+    warn "Certbot rate limit reached. Certificates will be obtained on next deployment."
+    if ssl_certs_exist; then
+        warn "Certbot rate limit reached. Keeping existing HTTPS configuration."
+    else
+        warn "Certbot rate limit reached. Continuing with HTTP-only configuration (will retry next deploy)."
+    fi
+fi
+
+log "SSL certificates configured successfully"
+
+# Log certificate expiration info
+if ssl_certs_exist; then
+    CERT_INFO="$(certbot certificates 2>/dev/null | grep -A 2 "Certificate Name:" || true)"
+    if [ -n "$CERT_INFO" ]; then
+        log "Certificate status:"
+        echo "$CERT_INFO" | grep -E "(Certificate Name|Expiry Date)" || true
+    fi
+fi
+
+rm -f /tmp/certbot-renew.log /tmp/certbot-obtain.log
+
+check_port_443() {
+    local host=$1
+    if command -v nc &> /dev/null; then
+        if nc -z -w5 "$host" 443 2>/dev/null; then
+            return 0
+        fi
+    elif command -v timeout &> /dev/null; then
+        if timeout 5 bash -c "echo > /dev/tcp/$host/443" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+validate_ssl_certificate() {
+    local domain=$1
+    local output
+
+    if ! command -v openssl &> /dev/null; then
+        warn "SSL validation skipped for $domain: openssl missing"
+        return 0
+    fi
+
+    # Prefer local nginx to avoid DNS/hairpin issues; use SNI via -servername
+    if command -v timeout &> /dev/null; then
+        output=$(timeout 10 openssl s_client -servername "$domain" -connect 127.0.0.1:443 </dev/null 2>&1 || true)
+    else
+        output=$(openssl s_client -servername "$domain" -connect 127.0.0.1:443 </dev/null 2>&1 || true)
+    fi
+
+    if echo "$output" | grep -q "Verify return code:"; then
+        if echo "$output" | grep -q "Verify return code: 0"; then
+            return 0
+        fi
+        warn "SSL certificate verification failed for $domain"
+        echo "$output" | grep -i "Verify return code" || true
+        return 1
+    fi
+
+    if echo "$output" | grep -q "Verification: OK"; then
+        return 0
+    fi
+
+    if echo "$output" | grep -qi "certificate verify failed"; then
+        warn "SSL certificate verification failed for $domain"
+        echo "$output" | grep -i "verify" || true
+        return 1
+    fi
+
+    warn "SSL connection test inconclusive for $domain"
+    echo "$output" | grep -i "Verify return code\|Verification" || true
+    return 0
+}
 
 # Step 9: Final health checks
 log "Step 9: Running health checks..."
 sleep 10
 
 HEALTH_FAILED=0
+CHECK_PUBLIC="${CHECK_PUBLIC:-0}"
+STRICT_PUBLIC_CHECKS="${STRICT_PUBLIC_CHECKS:-0}"
 
 # Check frontend
 log "Checking frontend (https://inspro-mes.ru)..."
-if curl -sSf -I https://inspro-mes.ru > /dev/null 2>&1; then
-    log "✓ Frontend is accessible"
-else
-    error "✗ Frontend health check failed"
+
+# Check port 443 availability (local nginx)
+if ! check_port_443 "127.0.0.1"; then
+    error "FAIL Port 443 is not accessible locally (127.0.0.1:443) for inspro-mes.ru"
+    warn "Diagnostic commands:"
+    warn "  - sudo ufw status | grep 443"
+    warn "  - sudo netstat -tlnp | grep :443"
+    warn "  - sudo ss -tlnp | grep :443"
     HEALTH_FAILED=1
+elif ! validate_ssl_certificate "inspro-mes.ru"; then
+    error "FAIL SSL certificate validation failed for inspro-mes.ru"
+    warn "Diagnostic commands:"
+    warn "  - timeout 10 openssl s_client -servername inspro-mes.ru -connect 127.0.0.1:443 -showcerts"
+    warn "  - sudo certbot certificates"
+    warn "  - ls -la /etc/letsencrypt/live/"
+    HEALTH_FAILED=1
+elif curl -sSf -I --resolve inspro-mes.ru:443:127.0.0.1 https://inspro-mes.ru > /dev/null 2>&1; then
+    log "OK Frontend is accessible"
+else
+    error "FAIL Frontend health check failed (HTTPS request failed)"
+    warn "Diagnostic commands:"
+    warn "  - curl -vI --resolve inspro-mes.ru:443:127.0.0.1 https://inspro-mes.ru"
+    warn "  - sudo nginx -T | grep -A 20 'server_name inspro-mes.ru'"
+    warn "  - sudo systemctl status nginx"
+    HEALTH_FAILED=1
+fi
+
+if [ "$CHECK_PUBLIC" = "1" ]; then
+    log "Checking public frontend (https://inspro-mes.ru)..."
+    if curl -sSf -I https://inspro-mes.ru > /dev/null 2>&1; then
+        log "OK Public frontend is accessible"
+    else
+        if [ "$STRICT_PUBLIC_CHECKS" = "1" ]; then
+            error "FAIL Public frontend reachability failed"
+            HEALTH_FAILED=1
+        else
+            warn "WARN Public frontend reachability failed"
+        fi
+    fi
 fi
 
 # Check API docs
 log "Checking API (https://api.inspro-mes.ru/docs)..."
-if curl -sSf -I https://api.inspro-mes.ru/docs > /dev/null 2>&1; then
-    log "✓ API is accessible"
-else
-    error "✗ API health check failed"
+
+# Check port 443 availability (local nginx)
+if ! check_port_443 "127.0.0.1"; then
+    error "FAIL Port 443 is not accessible locally (127.0.0.1:443) for api.inspro-mes.ru"
+    warn "Diagnostic commands:"
+    warn "  - sudo ufw status | grep 443"
+    warn "  - sudo netstat -tlnp | grep :443"
+    warn "  - sudo ss -tlnp | grep :443"
     HEALTH_FAILED=1
+elif ! validate_ssl_certificate "api.inspro-mes.ru"; then
+    error "FAIL SSL certificate validation failed for api.inspro-mes.ru"
+    warn "Diagnostic commands:"
+    warn "  - timeout 10 openssl s_client -servername api.inspro-mes.ru -connect 127.0.0.1:443 -showcerts"
+    warn "  - sudo certbot certificates"
+    warn "  - ls -la /etc/letsencrypt/live/"
+    HEALTH_FAILED=1
+elif curl -sSf -I --resolve api.inspro-mes.ru:443:127.0.0.1 https://api.inspro-mes.ru/docs > /dev/null 2>&1; then
+    log "OK API is accessible"
+else
+    error "FAIL API health check failed (HTTPS request failed)"
+    warn "Diagnostic commands:"
+    warn "  - curl -vI --resolve api.inspro-mes.ru:443:127.0.0.1 https://api.inspro-mes.ru/docs"
+    warn "  - sudo nginx -T | grep -A 20 'server_name api.inspro-mes.ru'"
+    warn "  - docker compose logs backend --tail=50"
+    HEALTH_FAILED=1
+fi
+
+if [ "$CHECK_PUBLIC" = "1" ]; then
+    log "Checking public API (https://api.inspro-mes.ru/docs)..."
+    if curl -sSf -I https://api.inspro-mes.ru/docs > /dev/null 2>&1; then
+        log "OK Public API is accessible"
+    else
+        if [ "$STRICT_PUBLIC_CHECKS" = "1" ]; then
+            error "FAIL Public API reachability failed"
+            HEALTH_FAILED=1
+        else
+            warn "WARN Public API reachability failed"
+        fi
+    fi
 fi
 
 # Check Docker services
@@ -325,9 +717,9 @@ for svc in "${required_services[@]}"; do
 done
 
 if [ "$missing" -eq 0 ]; then
-    log "✓ Docker services are running"
+    log "OK Docker services are running"
 else
-    error "✗ Some Docker services are not running"
+    error "FAIL Some Docker services are not running"
     docker compose ps
     HEALTH_FAILED=1
 fi
@@ -336,32 +728,42 @@ fi
 echo ""
 echo "=========================================="
 if [ $HEALTH_FAILED -eq 0 ]; then
-    echo -e "${GREEN}✓ DEPLOYMENT SUCCESSFUL${NC}"
-	echo ""
-	echo "Your application is now available at:"
-	echo "  - Frontend: https://inspro-mes.ru"
-	echo "  - API Docs: https://api.inspro-mes.ru/docs"
-	echo ""
-	echo "Login credentials are configured in .env (keep them private)."
-	if [ "$DEMO_SEED_OK" = "1" ]; then
-		echo "Demo users (seeded by seed_demo_data.py):"
-		echo "  - engineer@example.com / engineer123 (responsible)"
-		echo "  - designer@example.com / designer123 (responsible)"
-		echo "  - viewer@example.com / viewer123 (viewer)"
-	else
-		echo -e "${YELLOW}WARNING:${NC} Demo data was not seeded."
-	fi
-	echo ""
-	echo "To check status: bash /opt/mes-edms-mvp/status.sh"
+    echo -e "${GREEN}OK DEPLOYMENT SUCCESSFUL${NC}"
+    echo ""
+    echo "Your application is now available at:"
+    echo "  - Frontend: https://inspro-mes.ru"
+    echo "  - API Docs: https://api.inspro-mes.ru/docs"
+    echo ""
+    echo "Login credentials are configured in .env (keep them private)."
+    if [ "$DEMO_SEED_OK" = "1" ]; then
+        echo "Demo users (seeded by seed_demo_data.py):"
+        echo "  - engineer@example.com / engineer123 (responsible)"
+        echo "  - designer@example.com / designer123 (responsible)"
+        echo "  - viewer@example.com / viewer123 (viewer)"
+    else
+        echo -e "${YELLOW}WARNING:${NC} Demo data was not seeded."
+    fi
+    echo ""
+    echo "To check status: bash /opt/mes-edms-mvp/status.sh"
 else
-	echo -e "${RED}✗ DEPLOYMENT COMPLETED WITH ERRORS${NC}"
+    echo -e "${RED}DEPLOYMENT COMPLETED WITH ERRORS${NC}"
     echo ""
     echo "Some health checks failed. Run these commands to diagnose:"
+    echo ""
+    echo "SSL/HTTPS diagnostics (local nginx):"
+    echo "  - sudo certbot certificates"
+    echo "  - timeout 10 openssl s_client -servername inspro-mes.ru -connect 127.0.0.1:443 -showcerts"
+    echo "  - sudo nginx -T | grep -E '(listen 443|ssl_certificate)'"
+    echo "  - sudo ufw status | grep 443"
+    echo ""
+    echo "Service diagnostics:"
     echo "  - docker compose logs backend --tail=100"
-    echo "  - systemctl status nginx"
-    echo "  - nginx -t"
-    echo "  - curl -I https://inspro-mes.ru"
-    echo "  - curl -I https://api.inspro-mes.ru/docs"
+    echo "  - sudo systemctl status nginx"
+    echo "  - sudo nginx -t"
+    echo ""
+    echo "Manual health checks (local with SNI/Host):"
+    echo "  - curl -vI --resolve inspro-mes.ru:443:127.0.0.1 https://inspro-mes.ru"
+    echo "  - curl -vI --resolve api.inspro-mes.ru:443:127.0.0.1 https://api.inspro-mes.ru/docs"
     exit 1
 fi
 echo "=========================================="
