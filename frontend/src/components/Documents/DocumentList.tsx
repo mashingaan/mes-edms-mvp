@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { FileText, Download, Eye, Upload, Trash2 } from 'lucide-react'
 import { Document } from '../../types/document'
 import { formatFileSize } from '../../utils/formatters'
-import { getDownloadUrl } from '../../api/documents'
+import { getDownloadUrl, getPreviewUrl } from '../../api/documents'
 import { getAccessToken } from '../../api/client'
 import { DocumentUploadModal } from './DocumentUploadModal'
 import { RevisionHistory } from './RevisionHistory'
@@ -62,7 +62,7 @@ export function DocumentList({
 
   const handlePreview = (doc: Document) => {
     if (!doc.current_revision) return
-    const url = getDownloadUrl(doc.id, doc.current_revision.id)
+    const url = getPreviewUrl(doc.id, doc.current_revision.id)
     setPreviewUrl(url)
   }
 

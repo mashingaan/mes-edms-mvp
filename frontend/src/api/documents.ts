@@ -1,6 +1,14 @@
 import apiClient from './client'
 import { Document, Revision } from '../types/document'
 
+const getApiBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL
+  }
+
+  return window.location.origin
+}
+
 export const getDocuments = async (itemId?: string, showDeleted?: boolean): Promise<Document[]> => {
   const params = { ...(itemId && { item_id: itemId }), ...(showDeleted && { show_deleted: showDeleted }) }
   const response = await apiClient.get<Document[]>('/api/documents', { params })
@@ -60,12 +68,12 @@ export const deleteDocument = async (id: string, hard?: boolean): Promise<void> 
 }
 
 export const getDownloadUrl = (documentId: string, revisionId: string): string => {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  const baseUrl = getApiBaseUrl()
   return `${baseUrl}/api/documents/${documentId}/revisions/${revisionId}/download`
 }
 
 export const getPreviewUrl = (documentId: string, revisionId: string): string => {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  const baseUrl = getApiBaseUrl()
   return `${baseUrl}/api/documents/${documentId}/revisions/${revisionId}/preview`
 }
 
