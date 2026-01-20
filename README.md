@@ -56,11 +56,6 @@ curl http://localhost:8000/health
 docker-compose logs -f backend
 ```
 
-### Load Demo Data (Optional)
-```bash
-docker-compose exec backend python scripts/seed_demo_data.py
-```
-
 ### Troubleshooting
 
 | Issue | Solution |

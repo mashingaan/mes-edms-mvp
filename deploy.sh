@@ -228,8 +228,6 @@ fi
 
 log "Starting deployment of MES-EDMS MVP..."
 
-DEMO_SEED_OK=0
-
 # Step 1: Update system and install dependencies
 log "Step 1: Installing system dependencies..."
 apt-get update -qq
@@ -388,15 +386,6 @@ log "Docker services started successfully"
 if [ -f "backend/alembic.ini" ] || [ -f "alembic.ini" ]; then
     log "Running Alembic migrations..."
     docker compose exec backend alembic upgrade head
-
-    log "Seeding demo data..."
-    if docker compose exec backend python scripts/seed_demo_data.py; then
-        DEMO_SEED_OK=1
-        log "Demo data seeded successfully"
-    else
-        DEMO_SEED_OK=0
-        warn "Demo data seeding failed (may already be seeded). Continuing."
-    fi
 fi
 
 # Step 7: Configure Nginx
@@ -735,14 +724,6 @@ if [ $HEALTH_FAILED -eq 0 ]; then
     echo "  - API Docs: https://api.inspro-mes.ru/docs"
     echo ""
     echo "Login credentials are configured in .env (keep them private)."
-    if [ "$DEMO_SEED_OK" = "1" ]; then
-        echo "Demo users (seeded by seed_demo_data.py):"
-        echo "  - engineer@example.com / engineer123 (responsible)"
-        echo "  - designer@example.com / designer123 (responsible)"
-        echo "  - viewer@example.com / viewer123 (viewer)"
-    else
-        echo -e "${YELLOW}WARNING:${NC} Demo data was not seeded."
-    fi
     echo ""
     echo "To check status: bash /opt/mes-edms-mvp/status.sh"
 else

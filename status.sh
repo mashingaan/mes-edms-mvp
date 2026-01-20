@@ -185,10 +185,6 @@ for endpoint in "Frontend:https://inspro-mes.ru" "API Docs:https://api.inspro-me
     echo ""
 done
 
-section "DEMO DATA STATUS"
-docker compose exec -T db psql -U postgres -d mes_edms -c "SELECT email, role FROM users WHERE email LIKE '%@example.com' ORDER BY role;"
-docker compose exec -T db psql -U postgres -d mes_edms -c "SELECT COUNT(*) as demo_projects FROM projects;"
-
 section "DISK USAGE (Docker Volumes)"
 docker system df -v | grep -A 20 "Local Volumes"
 
