@@ -1,3 +1,4 @@
+import logging
 import uuid
 from uuid import UUID
 from typing import Optional, List, Tuple
@@ -14,6 +15,9 @@ from app.services.revision_service import get_current_revision
 from app.services.notification_service import notify_revision_uploaded
 from app.utils.revision_helper import get_next_revision
 from app.utils.validators import validate_pdf_header
+
+
+logger = logging.getLogger(__name__)
 
 
 async def create_document(
@@ -232,5 +236,18 @@ def get_revision_file_path(
     filename = f"{item.part_number}_{revision.revision_label}.pdf"
     
     path = get_file_path(revision.file_storage_uuid)
+    if not path.exists():
+        logger.warning(
+            "Revision file missing on disk",
+            extra={
+                "document_id": str(document_id),
+                "revision_id": str(revision_id),
+                "path": str(path),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Revision file not found",
+        )
     return (path, filename)
 

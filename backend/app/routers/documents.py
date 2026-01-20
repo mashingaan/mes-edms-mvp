@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 from typing import List, Optional
 
@@ -23,6 +24,7 @@ from app.dependencies import get_current_user, require_role
 from app.models.user import User, UserRole
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=List[DocumentResponse])
@@ -146,6 +148,16 @@ def download_revision(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Revision not found")
     
     path, filename = file_info
+    if not path.exists():
+        logger.warning(
+            "Revision file missing on disk",
+            extra={
+                "document_id": str(document_id),
+                "revision_id": str(revision_id),
+                "path": str(path),
+            },
+        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Revision file not found")
     return FileResponse(path, filename=filename, media_type="application/pdf")
 
 
@@ -165,6 +177,16 @@ def preview_revision(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Revision not found")
     
     path, _ = file_info
+    if not path.exists():
+        logger.warning(
+            "Revision file missing on disk",
+            extra={
+                "document_id": str(document_id),
+                "revision_id": str(revision_id),
+                "path": str(path),
+            },
+        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Revision file not found")
     
     def iterfile():
         with open(path, mode="rb") as f:

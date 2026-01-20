@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X, AlertCircle } from 'lucide-react'
-import { getAccessToken } from '../../api/client'
+import apiClient from '../../api/client'
 
 interface PDFViewerProps {
   url: string | null
@@ -37,32 +37,41 @@ export function PDFViewer({ url, onClose }: PDFViewerProps) {
       return
     }
 
+    let objectUrl: string | null = null
+    let cancelled = false
+
     setLoading(true)
     setError(null)
+    setBlobUrl(null)
 
-    fetch(url, {
-      headers: {
-        Authorization: `Bearer ${getAccessToken()}`,
-      },
-    })
+    apiClient
+      .get<Blob>(url, { responseType: 'blob' })
       .then((res) => {
-        if (!res.ok) throw new Error('Failed to load PDF')
-        return res.blob()
-      })
-      .then((blob) => {
-        const objectUrl = URL.createObjectURL(blob)
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(res.data)
         setBlobUrl(objectUrl)
       })
-      .catch(() => {
-        setError('Не удалось загрузить PDF')
+      .catch((err) => {
+        if (cancelled) return
+
+        const status = err?.response?.status
+        const detail = err?.response?.data?.detail
+        const message = detail || err?.message
+
+        const statusText = status ? ` (HTTP ${status})` : ''
+        const messageText = message ? `: ${message}` : ''
+        setError(`Не удалось загрузить PDF${statusText}${messageText}`)
       })
       .finally(() => {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       })
 
     return () => {
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl)
+      cancelled = true
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
       }
     }
   }, [url])
