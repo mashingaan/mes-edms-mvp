@@ -31,6 +31,7 @@ services:
       - .env.docker
     volumes:
       - file_storage:/var/app/storage/documents
+      - tech_file_storage:/var/app/storage/tech_documents
     ports:
       - "8000:8000"
     depends_on:
@@ -66,3 +67,4 @@ networks:
 volumes:
   postgres_data:
   file_storage:
+  tech_file_storage:

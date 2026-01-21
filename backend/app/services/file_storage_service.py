@@ -82,6 +82,30 @@ def get_excel_file_path(storage_uuid: uuid.UUID, extension: str) -> Path:
     return Path(storage_root) / f"{storage_uuid}{normalized_extension}"
 
 
+def get_candidate_paths(storage_uuid: uuid.UUID, extension: str, kind: str = "tech") -> list[Path]:
+    """Return candidate file paths across active and legacy storage roots."""
+    normalized_extension = extension if extension.startswith(".") else f".{extension}"
+
+    if kind == "tech":
+        primary_root = settings.TECH_FILE_STORAGE_PATH or settings.FILE_STORAGE_PATH
+        roots: list[str] = [primary_root]
+        if settings.TECH_FILE_STORAGE_PATH and settings.FILE_STORAGE_PATH:
+            if settings.TECH_FILE_STORAGE_PATH != settings.FILE_STORAGE_PATH:
+                roots.append(settings.FILE_STORAGE_PATH)
+    else:
+        roots = [settings.FILE_STORAGE_PATH]
+
+    seen = set()
+    paths: list[Path] = []
+    for root in roots:
+        if root in seen:
+            continue
+        seen.add(root)
+        paths.append(Path(root) / f"{storage_uuid}{normalized_extension}")
+
+    return paths
+
+
 def delete_excel_file(storage_uuid: uuid.UUID, extension: str) -> bool:
     """Delete Excel file from storage."""
     path = get_excel_file_path(storage_uuid, extension)
